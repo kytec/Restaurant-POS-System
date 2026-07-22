@@ -1,0 +1,118 @@
+@page "/menu"
+@attribute [Authorize(Roles = AppRoles.AdminOnly)]
+
+@inject MenuService MenuService
+@inject ISnackbar Snackbar
+
+<PageTitle>Menu</PageTitle>
+
+<div class="page-header">
+    <div>
+        <MudText Typo="Typo.h4">Menu</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">Categories, items, prices, and availability</MudText>
+    </div>
+</div>
+
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudText Typo="Typo.h6">Add Menu Item</MudText>
+    <div class="dense-form mt-3">
+        <MudSelect T="int" Label="Category" @bind-Value="_item.CategoryId">
+            @foreach (var category in _categories)
+            {
+                <MudSelectItem Value="@category.Id">@category.Name</MudSelectItem>
+            }
+        </MudSelect>
+        <MudTextField Label="Item name" @bind-Value="_item.Name" />
+        <MudTextField Label="Description" @bind-Value="_item.Description" />
+        <MudNumericField T="decimal" Label="Price" Min="0.01m" @bind-Value="_item.Price" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="CreateItemAsync">Add Item</MudButton>
+    </div>
+    <MudDivider Class="my-4" />
+    <div class="dense-form">
+        <MudTextField Label="New category" @bind-Value="_newCategoryName" />
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CreateNewFolder" OnClick="CreateCategoryAsync">Add Category</MudButton>
+    </div>
+</MudPaper>
+
+@if (_categories.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">No menu categories yet. Add a category to begin.</MudAlert>
+}
+else
+{
+    <MudExpansionPanels MultiExpansion="true">
+        @foreach (var category in _categories)
+        {
+            <MudExpansionPanel Text="@category.Name" Expanded="true">
+                <MudTable Items="@category.Items" Dense="true" Hover="true">
+                    <HeaderContent>
+                        <MudTh>Item</MudTh>
+                        <MudTh>Price</MudTh>
+                        <MudTh>Available</MudTh>
+                        <MudTh>Action</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>
+                            <MudText Typo="Typo.body1">@context.Name</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@context.Description</MudText>
+                        </MudTd>
+                        <MudTd>@context.Price.ToString("C")</MudTd>
+                        <MudTd><MudSwitch T="bool" Value="@context.IsAvailable" ValueChanged="value => SetAvailabilityAsync(context.Id, value)" Color="Color.Primary" /></MudTd>
+                        <MudTd>
+                            <MudChip T="string" Size="Size.Small" Color="@(context.IsAvailable ? Color.Success : Color.Default)">
+                                @(context.IsAvailable ? "Available" : "Hidden")
+                            </MudChip>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudExpansionPanel>
+        }
+    </MudExpansionPanels>
+}
+
+@code {
+    private List<MenuCategory> _categories = [];
+    private string _newCategoryName = string.Empty;
+    private MenuItemInput _item = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _categories = await MenuService.GetMenuAsync();
+        _item.CategoryId = _categories.FirstOrDefault()?.Id ?? 0;
+    }
+
+    private async Task CreateCategoryAsync()
+    {
+        await MenuService.CreateCategoryAsync(_newCategoryName);
+        _newCategoryName = string.Empty;
+        Snackbar.Add("Category added.", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task CreateItemAsync()
+    {
+        await MenuService.CreateMenuItemAsync(_item.CategoryId, _item.Name, _item.Description, _item.Price);
+        _item = new MenuItemInput { CategoryId = _categories.FirstOrDefault()?.Id ?? 0 };
+        Snackbar.Add("Menu item added.", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task SetAvailabilityAsync(int itemId, bool isAvailable)
+    {
+        await MenuService.SetAvailabilityAsync(itemId, isAvailable);
+        await LoadAsync();
+    }
+
+    private sealed class MenuItemInput
+    {
+        public int CategoryId { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public decimal Price { get; set; } = 1;
+    }
+}

@@ -1,0 +1,92 @@
+@page "/"
+@attribute [Authorize]
+
+@inject ReportService ReportService
+@inject OrderService OrderService
+@inject TableService TableService
+
+<PageTitle>Dashboard</PageTitle>
+
+<div class="page-header">
+    <div>
+        <MudText Typo="Typo.h4">Dashboard</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">Today at a glance</MudText>
+    </div>
+    <MudChip T="string" Icon="@Icons.Material.Filled.AccessTime" Color="Color.Primary" Variant="Variant.Outlined">@DateTime.Now.ToString("MMM d, h:mm tt")</MudChip>
+</div>
+
+@if (_report is null)
+{
+    <MudSkeleton Height="120px" />
+}
+else
+{
+    <div class="metric-grid">
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudText Typo="Typo.overline">Sales</MudText>
+            <MudText Typo="Typo.h4">@_report.SalesTotal.ToString("C")</MudText>
+        </MudPaper>
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudText Typo="Typo.overline">Orders</MudText>
+            <MudText Typo="Typo.h4">@_report.OrderCount</MudText>
+        </MudPaper>
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudText Typo="Typo.overline">Paid Orders</MudText>
+            <MudText Typo="Typo.h4">@_report.PaidOrderCount</MudText>
+        </MudPaper>
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudText Typo="Typo.overline">Low Stock</MudText>
+            <MudText Typo="Typo.h4">@_report.LowStockItems.Count</MudText>
+        </MudPaper>
+    </div>
+
+    <div class="work-grid mt-4">
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudText Typo="Typo.h6">Open Orders</MudText>
+            @if (_openOrders.Count == 0)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">No active orders right now.</MudText>
+            }
+            else
+            {
+                <MudList T="Order" Dense="true">
+                    @foreach (var order in _openOrders.Take(6))
+                    {
+                        <MudListItem Icon="@Icons.Material.Filled.ReceiptLong">
+                            @order.OrderNumber - @order.Status - @order.Total.ToString("C")
+                        </MudListItem>
+                    }
+                </MudList>
+            }
+        </MudPaper>
+
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudText Typo="Typo.h6">Tables</MudText>
+            <MudTable Items="_tables" Dense="true" Hover="true">
+                <HeaderContent>
+                    <MudTh>Table</MudTh>
+                    <MudTh>Seats</MudTh>
+                    <MudTh>Status</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Name</MudTd>
+                    <MudTd>@context.Capacity</MudTd>
+                    <MudTd><MudChip T="string" Size="Size.Small">@context.Status</MudChip></MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+    </div>
+}
+
+@code {
+    private DailyReport? _report;
+    private List<Order> _openOrders = [];
+    private List<DiningTable> _tables = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _report = await ReportService.GetTodayAsync();
+        _openOrders = await OrderService.GetOpenOrdersAsync();
+        _tables = await TableService.GetTablesAsync();
+    }
+}

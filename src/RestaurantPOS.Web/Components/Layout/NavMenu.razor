@@ -1,0 +1,68 @@
+@implements IDisposable
+
+@inject NavigationManager NavigationManager
+
+<MudNavMenu Class="pos-nav" Dense="true">
+    <MudText Typo="Typo.subtitle2" Class="nav-section">Operations</MudText>
+    <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink>
+
+    <AuthorizeView Roles="@AppRoles.OrderAccess">
+        <MudNavLink Href="orders" Icon="@Icons.Material.Filled.ReceiptLong">Orders</MudNavLink>
+        <MudNavLink Href="tables" Icon="@Icons.Material.Filled.TableRestaurant">Tables</MudNavLink>
+    </AuthorizeView>
+
+    <AuthorizeView Roles="@AppRoles.KitchenAccess">
+        <MudNavLink Href="kitchen" Icon="@Icons.Material.Filled.Restaurant">Kitchen Display</MudNavLink>
+    </AuthorizeView>
+
+    <MudText Typo="Typo.subtitle2" Class="nav-section">Management</MudText>
+    <AuthorizeView Roles="@AppRoles.AdminOnly">
+        <MudNavLink Href="menu" Icon="@Icons.Material.Filled.MenuBook">Menu</MudNavLink>
+        <MudNavLink Href="waiters" Icon="@Icons.Material.Filled.Groups">Waiters</MudNavLink>
+        <MudNavLink Href="inventory" Icon="@Icons.Material.Filled.Inventory2">Inventory</MudNavLink>
+        <MudNavLink Href="reports" Icon="@Icons.Material.Filled.Assessment">Reports</MudNavLink>
+    </AuthorizeView>
+
+    <AuthorizeView Roles="@AppRoles.PaymentAccess">
+        <MudNavLink Href="payments" Icon="@Icons.Material.Filled.Payments">Payments</MudNavLink>
+    </AuthorizeView>
+
+    <MudDivider Class="my-3" />
+
+    <AuthorizeView>
+        <Authorized>
+            <MudNavLink Href="Account/Manage" Icon="@Icons.Material.Filled.AccountCircle">Account</MudNavLink>
+            <form action="Account/Logout" method="post" class="logout-form">
+                <AntiforgeryToken />
+                <input type="hidden" name="ReturnUrl" value="@currentUrl" />
+                <MudButton ButtonType="ButtonType.Submit" StartIcon="@Icons.Material.Filled.Logout" Variant="Variant.Text" Color="Color.Default" FullWidth="true">
+                    Logout
+                </MudButton>
+            </form>
+        </Authorized>
+        <NotAuthorized>
+            <MudNavLink Href="Account/Login" Icon="@Icons.Material.Filled.Login">Login</MudNavLink>
+        </NotAuthorized>
+    </AuthorizeView>
+</MudNavMenu>
+
+@code {
+    private string? currentUrl;
+
+    protected override void OnInitialized()
+    {
+        currentUrl = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+        NavigationManager.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        currentUrl = NavigationManager.ToBaseRelativePath(e.Location);
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        NavigationManager.LocationChanged -= OnLocationChanged;
+    }
+}

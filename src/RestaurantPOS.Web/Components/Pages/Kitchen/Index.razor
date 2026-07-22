@@ -1,0 +1,87 @@
+@page "/kitchen"
+@attribute [Authorize(Roles = AppRoles.KitchenAccess)]
+@implements IDisposable
+
+@inject KitchenService KitchenService
+@inject OrderService OrderService
+@inject PosNotificationService Notifications
+
+<PageTitle>Kitchen Display</PageTitle>
+
+<div class="page-header">
+    <div>
+        <MudText Typo="Typo.h4">Kitchen Display</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">Pending, preparing, and ready order items</MudText>
+    </div>
+    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync">Refresh</MudButton>
+</div>
+
+@if (_items.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">No kitchen items are waiting.</MudAlert>
+}
+else
+{
+    <MudTable Items="_items" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>Order</MudTh>
+            <MudTh>Table</MudTh>
+            <MudTh>Item</MudTh>
+            <MudTh>Notes</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh>Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Order?.OrderNumber</MudTd>
+            <MudTd>@(context.Order?.DiningTable?.Name ?? "Walk-in")</MudTd>
+            <MudTd>@context.Quantity x @context.MenuItemName</MudTd>
+            <MudTd>@context.Notes</MudTd>
+            <MudTd><MudChip T="string" Size="Size.Small" Color="@KitchenColor(context.KitchenStatus)">@context.KitchenStatus</MudChip></MudTd>
+            <MudTd>
+                <div class="status-row">
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="() => SetStatusAsync(context.Id, KitchenItemStatus.Preparing)">Preparing</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Success" OnClick="() => SetStatusAsync(context.Id, KitchenItemStatus.Ready)">Ready</MudButton>
+                </div>
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private List<OrderItem> _items = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        Notifications.Changed += OnChanged;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _items = await KitchenService.GetKitchenItemsAsync();
+    }
+
+    private async Task SetStatusAsync(int orderItemId, KitchenItemStatus status)
+    {
+        await OrderService.UpdateKitchenItemStatusAsync(orderItemId, status);
+        await LoadAsync();
+    }
+
+    private void OnChanged()
+    {
+        _ = InvokeAsync(LoadAsync);
+    }
+
+    public void Dispose()
+    {
+        Notifications.Changed -= OnChanged;
+    }
+
+    private static Color KitchenColor(KitchenItemStatus status) => status switch
+    {
+        KitchenItemStatus.Pending => Color.Warning,
+        KitchenItemStatus.Preparing => Color.Info,
+        KitchenItemStatus.Ready => Color.Success,
+        _ => Color.Default
+    };
+}

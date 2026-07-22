@@ -1,0 +1,86 @@
+@page "/inventory"
+@attribute [Authorize(Roles = AppRoles.InventoryAccess)]
+
+@inject InventoryService InventoryService
+@inject ISnackbar Snackbar
+
+<PageTitle>Inventory</PageTitle>
+
+<div class="page-header">
+    <div>
+        <MudText Typo="Typo.h4">Inventory</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">Stock counts, adjustments, and low-stock alerts</MudText>
+    </div>
+</div>
+
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudText Typo="Typo.h6">Add Inventory Item</MudText>
+    <div class="dense-form mt-3">
+        <MudTextField Label="Name" @bind-Value="_newItem.Name" />
+        <MudTextField Label="Unit" @bind-Value="_newItem.Unit" />
+        <MudNumericField T="decimal" Label="On hand" Min="0" @bind-Value="_newItem.QuantityOnHand" />
+        <MudNumericField T="decimal" Label="Reorder level" Min="0" @bind-Value="_newItem.ReorderLevel" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="CreateItemAsync">Add Item</MudButton>
+    </div>
+</MudPaper>
+
+<MudTable Items="_items" Dense="true" Hover="true">
+    <HeaderContent>
+        <MudTh>Item</MudTh>
+        <MudTh>On Hand</MudTh>
+        <MudTh>Reorder Level</MudTh>
+        <MudTh>Status</MudTh>
+        <MudTh>Adjust</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd>@context.Name</MudTd>
+        <MudTd>@context.QuantityOnHand @context.Unit</MudTd>
+        <MudTd>@context.ReorderLevel @context.Unit</MudTd>
+        <MudTd>
+            <MudChip T="string" Size="Size.Small" Color="@(context.IsLowStock ? Color.Warning : Color.Success)">
+                @(context.IsLowStock ? "Low" : "OK")
+            </MudChip>
+        </MudTd>
+        <MudTd>
+            <div class="status-row">
+                <MudNumericField T="decimal" Min="0.01m" @bind-Value="_adjustQuantity" />
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="() => AdjustAsync(context.Id, StockMovementType.AdjustmentIn)">Add</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Warning" OnClick="() => AdjustAsync(context.Id, StockMovementType.AdjustmentOut)">Remove</MudButton>
+            </div>
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+@code {
+    private List<InventoryItem> _items = [];
+    private InventoryItemInput _newItem = new();
+    private decimal _adjustQuantity = 1;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _items = await InventoryService.GetInventoryAsync();
+    }
+
+    private async Task CreateItemAsync()
+    {
+        await InventoryService.CreateItemAsync(_newItem.Name, _newItem.Unit, _newItem.QuantityOnHand, _newItem.ReorderLevel);
+        _newItem = new InventoryItemInput();
+        Snackbar.Add("Inventory item added.", Severity.Success);
+        _items = await InventoryService.GetInventoryAsync();
+    }
+
+    private async Task AdjustAsync(int itemId, StockMovementType type)
+    {
+        await InventoryService.AdjustStockAsync(itemId, type, _adjustQuantity, "Manual adjustment");
+        Snackbar.Add("Stock adjusted.", Severity.Success);
+        _items = await InventoryService.GetInventoryAsync();
+    }
+
+    private sealed class InventoryItemInput
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Unit { get; set; } = "unit";
+        public decimal QuantityOnHand { get; set; }
+        public decimal ReorderLevel { get; set; }
+    }
+}

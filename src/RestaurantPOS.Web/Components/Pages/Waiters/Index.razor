@@ -1,0 +1,60 @@
+@page "/waiters"
+@attribute [Authorize(Roles = AppRoles.AdminOnly)]
+
+@inject StaffService StaffService
+@inject ISnackbar Snackbar
+
+<PageTitle>Waiters</PageTitle>
+
+<div class="page-header">
+    <div>
+        <MudText Typo="Typo.h4">Waiters</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">Staff directory and POS roles</MudText>
+    </div>
+</div>
+
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudText Typo="Typo.h6">Add Staff Member</MudText>
+    <div class="dense-form mt-3">
+        <MudTextField Label="Full name" @bind-Value="_fullName" />
+        <MudSelect T="StaffRole" Label="Role" @bind-Value="_role">
+            @foreach (StaffRole role in Enum.GetValues<StaffRole>())
+            {
+                <MudSelectItem Value="@role">@role</MudSelectItem>
+            }
+        </MudSelect>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PersonAdd" OnClick="CreateStaffAsync">Add Staff</MudButton>
+    </div>
+</MudPaper>
+
+<MudTable Items="_staff" Dense="true" Hover="true">
+    <HeaderContent>
+        <MudTh>Name</MudTh>
+        <MudTh>Role</MudTh>
+        <MudTh>Status</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd>@context.FullName</MudTd>
+        <MudTd>@context.Role</MudTd>
+        <MudTd><MudChip T="string" Size="Size.Small" Color="Color.Success">Active</MudChip></MudTd>
+    </RowTemplate>
+</MudTable>
+
+@code {
+    private List<StaffMember> _staff = [];
+    private string _fullName = string.Empty;
+    private StaffRole _role = StaffRole.Waiter;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _staff = await StaffService.GetStaffAsync();
+    }
+
+    private async Task CreateStaffAsync()
+    {
+        await StaffService.CreateStaffAsync(_fullName, _role);
+        _fullName = string.Empty;
+        Snackbar.Add("Staff member added.", Severity.Success);
+        _staff = await StaffService.GetStaffAsync();
+    }
+}

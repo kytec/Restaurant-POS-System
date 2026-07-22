@@ -1,0 +1,65 @@
+@page "/payments"
+@attribute [Authorize(Roles = AppRoles.PaymentAccess)]
+
+@inject PaymentService PaymentService
+@inject ISnackbar Snackbar
+
+<PageTitle>Payments</PageTitle>
+
+<div class="page-header">
+    <div>
+        <MudText Typo="Typo.h4">Payments</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">Record cash, card, mobile, and manual payments</MudText>
+    </div>
+</div>
+
+@if (_orders.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">No orders are ready for payment.</MudAlert>
+}
+else
+{
+    <MudTable Items="_orders" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>Order</MudTh>
+            <MudTh>Table</MudTh>
+            <MudTh>Total</MudTh>
+            <MudTh>Balance</MudTh>
+            <MudTh>Payment</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.OrderNumber</MudTd>
+            <MudTd>@(context.DiningTable?.Name ?? "Walk-in")</MudTd>
+            <MudTd>@context.Total.ToString("C")</MudTd>
+            <MudTd>@context.BalanceDue.ToString("C")</MudTd>
+            <MudTd>
+                <div class="status-row">
+                    <MudSelect T="PaymentMethod" Dense="true" @bind-Value="_method">
+                        @foreach (PaymentMethod method in Enum.GetValues<PaymentMethod>())
+                        {
+                            <MudSelectItem Value="@method">@method</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="() => RecordPaymentAsync(context.Id, context.BalanceDue)">Pay Balance</MudButton>
+                </div>
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private List<Order> _orders = [];
+    private PaymentMethod _method = PaymentMethod.Cash;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _orders = await PaymentService.GetPayableOrdersAsync();
+    }
+
+    private async Task RecordPaymentAsync(int orderId, decimal amount)
+    {
+        await PaymentService.RecordPaymentAsync(orderId, _method, amount, string.Empty);
+        Snackbar.Add("Payment recorded and table closed when fully paid.", Severity.Success);
+        _orders = await PaymentService.GetPayableOrdersAsync();
+    }
+}

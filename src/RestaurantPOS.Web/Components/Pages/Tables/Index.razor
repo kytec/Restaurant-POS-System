@@ -1,0 +1,57 @@
+@page "/tables"
+@attribute [Authorize(Roles = AppRoles.OrderAccess)]
+
+@inject TableService TableService
+
+<PageTitle>Tables</PageTitle>
+
+<div class="page-header">
+    <div>
+        <MudText Typo="Typo.h4">Tables</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">Dining room status and quick table actions</MudText>
+    </div>
+</div>
+
+<div class="work-grid">
+    @foreach (var table in _tables)
+    {
+        <MudPaper Class="pa-4" Elevation="1">
+            <div class="page-header">
+                <div>
+                    <MudText Typo="Typo.h6">@table.Name</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@table.Capacity seats</MudText>
+                </div>
+                <MudChip T="string" Color="@TableColor(table.Status)" Size="Size.Small">@table.Status</MudChip>
+            </div>
+            <div class="status-row">
+                @foreach (TableStatus status in Enum.GetValues<TableStatus>())
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="() => SetStatusAsync(table.Id, status)">@status</MudButton>
+                }
+            </div>
+        </MudPaper>
+    }
+</div>
+
+@code {
+    private List<DiningTable> _tables = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _tables = await TableService.GetTablesAsync();
+    }
+
+    private async Task SetStatusAsync(int tableId, TableStatus status)
+    {
+        await TableService.SetStatusAsync(tableId, status);
+        _tables = await TableService.GetTablesAsync();
+    }
+
+    private static Color TableColor(TableStatus status) => status switch
+    {
+        TableStatus.Available => Color.Success,
+        TableStatus.ReadyToPay => Color.Warning,
+        TableStatus.Closed => Color.Default,
+        _ => Color.Info
+    };
+}

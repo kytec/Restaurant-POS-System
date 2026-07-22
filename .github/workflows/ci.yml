@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+jobs:
+  build-test:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore RestaurantPOS.sln
+
+      - name: Build
+        run: dotnet build RestaurantPOS.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test RestaurantPOS.sln --configuration Release --no-build --collect:"XPlat Code Coverage"
+
+      - name: Publish check
+        run: dotnet publish src/RestaurantPOS.Web/RestaurantPOS.Web.csproj --configuration Release --no-build --output ./publish-check

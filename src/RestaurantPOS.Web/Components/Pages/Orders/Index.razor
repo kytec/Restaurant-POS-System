@@ -1,0 +1,182 @@
+@page "/orders"
+@attribute [Authorize(Roles = AppRoles.OrderAccess)]
+
+@inject OrderService OrderService
+@inject TableService TableService
+@inject StaffService StaffService
+@inject MenuService MenuService
+@inject ISnackbar Snackbar
+
+<PageTitle>Orders</PageTitle>
+
+<div class="page-header">
+    <div>
+        <MudText Typo="Typo.h4">Orders</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">Create table orders and send them to the kitchen</MudText>
+    </div>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="CreateOrderAsync">New Order</MudButton>
+</div>
+
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudText Typo="Typo.h6">New Order Setup</MudText>
+    <div class="dense-form mt-3">
+        <MudSelect T="int?" Label="Table" @bind-Value="_selectedTableId" Clearable="true">
+            @foreach (var table in _tables)
+            {
+                <MudSelectItem T="int?" Value="@table.Id">@table.Name (@table.Status)</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="int?" Label="Waiter" @bind-Value="_selectedStaffId" Clearable="true">
+            @foreach (var staff in _staff.Where(staff => staff.Role == StaffRole.Waiter))
+            {
+                <MudSelectItem T="int?" Value="@staff.Id">@staff.FullName</MudSelectItem>
+            }
+        </MudSelect>
+    </div>
+</MudPaper>
+
+<div class="work-grid">
+    <MudPaper Class="pa-4" Elevation="1">
+        <MudText Typo="Typo.h6">Open Orders</MudText>
+        <MudTable T="Order" Items="_orders" Dense="true" Hover="true" OnRowClick="SelectOrderRowAsync">
+            <HeaderContent>
+                <MudTh>Order</MudTh>
+                <MudTh>Table</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Total</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.OrderNumber</MudTd>
+                <MudTd>@(context.DiningTable?.Name ?? "Walk-in")</MudTd>
+                <MudTd><MudChip T="string" Size="Size.Small">@context.Status</MudChip></MudTd>
+                <MudTd>@context.Total.ToString("C")</MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+
+    <MudPaper Class="pa-4" Elevation="1">
+        @if (_selectedOrder is null)
+        {
+            <MudText Typo="Typo.h6">Order Details</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Select or create an order.</MudText>
+        }
+        else
+        {
+            <div class="page-header">
+                <div>
+                    <MudText Typo="Typo.h6">@_selectedOrder.OrderNumber</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@(_selectedOrder.DiningTable?.Name ?? "Walk-in") - @_selectedOrder.Status</MudText>
+                </div>
+                <MudButton Disabled="@(_selectedOrder.Status != OrderStatus.Draft)" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Restaurant" OnClick="SendToKitchenAsync">Send</MudButton>
+            </div>
+
+            <div class="dense-form mb-4">
+                <MudSelect T="int?" Label="Menu item" @bind-Value="_selectedMenuItemId">
+                    @foreach (var item in _menuItems)
+                    {
+                        <MudSelectItem T="int?" Value="@item.Id">@item.Name - @item.Price.ToString("C")</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudNumericField T="int" Label="Quantity" Min="1" @bind-Value="_quantity" />
+                <MudTextField Label="Kitchen notes" @bind-Value="_notes" />
+                <MudButton Disabled="@(_selectedOrder.Status != OrderStatus.Draft)" Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.AddShoppingCart" OnClick="AddItemAsync">Add Item</MudButton>
+            </div>
+
+            <MudTable Items="_selectedOrder.Items" Dense="true">
+                <HeaderContent>
+                    <MudTh>Item</MudTh>
+                    <MudTh>Qty</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh>Total</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.MenuItemName</MudTd>
+                    <MudTd>@context.Quantity</MudTd>
+                    <MudTd>@context.KitchenStatus</MudTd>
+                    <MudTd>@context.LineTotal.ToString("C")</MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudPaper>
+</div>
+
+@code {
+    private List<Order> _orders = [];
+    private List<DiningTable> _tables = [];
+    private List<StaffMember> _staff = [];
+    private List<MenuItem> _menuItems = [];
+    private Order? _selectedOrder;
+    private int? _selectedTableId;
+    private int? _selectedStaffId;
+    private int? _selectedMenuItemId;
+    private int _quantity = 1;
+    private string _notes = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _orders = await OrderService.GetOpenOrdersAsync();
+        _tables = await TableService.GetTablesAsync();
+        _staff = await StaffService.GetStaffAsync();
+        _menuItems = (await MenuService.GetMenuAsync())
+            .SelectMany(category => category.Items)
+            .Where(item => item.IsAvailable)
+            .OrderBy(item => item.Name)
+            .ToList();
+
+        if (_selectedOrder is not null)
+        {
+            _selectedOrder = await OrderService.GetOrderAsync(_selectedOrder.Id);
+        }
+    }
+
+    private async Task CreateOrderAsync()
+    {
+        _selectedOrder = await OrderService.CreateDraftOrderAsync(_selectedTableId, _selectedStaffId);
+        Snackbar.Add("Order started.", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task SelectOrderAsync(int orderId)
+    {
+        _selectedOrder = await OrderService.GetOrderAsync(orderId);
+    }
+
+    private async Task SelectOrderRowAsync(TableRowClickEventArgs<Order> args)
+    {
+        if (args.Item is not null)
+        {
+            await SelectOrderAsync(args.Item.Id);
+        }
+    }
+
+    private async Task AddItemAsync()
+    {
+        if (_selectedOrder is null || _selectedMenuItemId is null)
+        {
+            return;
+        }
+
+        await OrderService.AddItemAsync(_selectedOrder.Id, _selectedMenuItemId.Value, _quantity, _notes);
+        _quantity = 1;
+        _notes = string.Empty;
+        Snackbar.Add("Item added.", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task SendToKitchenAsync()
+    {
+        if (_selectedOrder is null)
+        {
+            return;
+        }
+
+        await OrderService.SendToKitchenAsync(_selectedOrder.Id);
+        Snackbar.Add("Order sent to kitchen.", Severity.Success);
+        await LoadAsync();
+    }
+}

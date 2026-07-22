@@ -1,0 +1,84 @@
+@page "/reports"
+@attribute [Authorize(Roles = AppRoles.ReportsAccess)]
+
+@inject ReportService ReportService
+
+<PageTitle>Reports</PageTitle>
+
+<div class="page-header">
+    <div>
+        <MudText Typo="Typo.h4">Reports</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">Daily sales, top items, and inventory signals</MudText>
+    </div>
+    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync">Refresh</MudButton>
+</div>
+
+@if (_report is null)
+{
+    <MudSkeleton Height="120px" />
+}
+else
+{
+    <div class="metric-grid mb-4">
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudText Typo="Typo.overline">Sales Total</MudText>
+            <MudText Typo="Typo.h4">@_report.SalesTotal.ToString("C")</MudText>
+        </MudPaper>
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudText Typo="Typo.overline">Orders</MudText>
+            <MudText Typo="Typo.h4">@_report.OrderCount</MudText>
+        </MudPaper>
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudText Typo="Typo.overline">Paid</MudText>
+            <MudText Typo="Typo.h4">@_report.PaidOrderCount</MudText>
+        </MudPaper>
+    </div>
+
+    <div class="work-grid">
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudText Typo="Typo.h6">Top Menu Items</MudText>
+            <MudTable Items="_report.TopItems" Dense="true">
+                <HeaderContent>
+                    <MudTh>Item</MudTh>
+                    <MudTh>Qty</MudTh>
+                    <MudTh>Sales</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Name</MudTd>
+                    <MudTd>@context.QuantitySold</MudTd>
+                    <MudTd>@context.SalesTotal.ToString("C")</MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudText Typo="Typo.h6">Low Stock</MudText>
+            <MudTable Items="_report.LowStockItems" Dense="true">
+                <HeaderContent>
+                    <MudTh>Item</MudTh>
+                    <MudTh>On Hand</MudTh>
+                    <MudTh>Reorder</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Name</MudTd>
+                    <MudTd>@context.QuantityOnHand @context.Unit</MudTd>
+                    <MudTd>@context.ReorderLevel @context.Unit</MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+    </div>
+}
+
+@code {
+    private DailyReport? _report;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _report = await ReportService.GetTodayAsync();
+    }
+}
