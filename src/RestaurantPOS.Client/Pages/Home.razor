@@ -1,0 +1,98 @@
+@page "/"
+@inject RestaurantPosApiClient ApiClient
+
+<PageTitle>Restaurant POS</PageTitle>
+
+<div class="page-heading">
+    <div>
+        <h1>Restaurant POS</h1>
+        <p>Standalone WebAssembly client connected to the backend API.</p>
+    </div>
+    <button class="btn btn-primary" @onclick="LoadAsync" disabled="@_isLoading">Refresh</button>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(_errorMessage))
+{
+    <div class="alert alert-danger" role="alert">@_errorMessage</div>
+}
+
+<section class="status-grid" aria-label="API status">
+    <div class="status-card">
+        <span class="status-label">Backend API</span>
+        <strong>@(_health?.Status ?? "checking")</strong>
+        <small>@(_health is null ? "Waiting for response" : $"Checked {_health.CheckedAt.LocalDateTime:g}")</small>
+    </div>
+    <div class="status-card">
+        <span class="status-label">Menu categories</span>
+        <strong>@_menu.Count</strong>
+        <small>@_menu.Sum(category => category.Items.Count) items loaded from API</small>
+    </div>
+</section>
+
+<section class="menu-section" aria-labelledby="menu-title">
+    <h2 id="menu-title">Menu From API</h2>
+    @if (_isLoading)
+    {
+        <p>Loading menu...</p>
+    }
+    else if (_menu.Count == 0)
+    {
+        <p>No menu categories are available yet.</p>
+    }
+    else
+    {
+        <div class="menu-grid">
+            @foreach (var category in _menu)
+            {
+                <article class="menu-category">
+                    <h3>@category.Name</h3>
+                    <ul>
+                        @foreach (var item in category.Items)
+                        {
+                            <li>
+                                <div>
+                                    <strong>@item.Name</strong>
+                                    <span>@item.Description</span>
+                                </div>
+                                <span>@item.Price.ToString("C")</span>
+                            </li>
+                        }
+                    </ul>
+                </article>
+            }
+        </div>
+    }
+</section>
+
+@code {
+    private ApiHealthResponse? _health;
+    private IReadOnlyList<MenuCategoryDto> _menu = [];
+    private bool _isLoading = true;
+    private string? _errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+
+        try
+        {
+            _health = await ApiClient.GetHealthAsync();
+            _menu = await ApiClient.GetMenuAsync();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Could not reach the backend API. {ex.Message}";
+            _menu = [];
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+}

@@ -2,11 +2,14 @@
 
 ## Purpose
 
-This repository contains a simple single-restaurant POS built with .NET 10, Blazor Server interactive components, MudBlazor, ASP.NET Core Identity, EF Core, and SQL Server LocalDB for local development.
+This repository contains a simple single-restaurant POS built with .NET 10, Blazor, ASP.NET Core Identity, EF Core, and SQL Server LocalDB for local development.
 
 ## Structure
 
-- `src/RestaurantPOS.Web` is the only application project for v1.
+- `src/RestaurantPOS.Api` is the backend HTTP API. New frontend screens should call this project instead of accessing data directly.
+- `src/RestaurantPOS.Client` is the standalone Blazor WebAssembly frontend.
+- `src/RestaurantPOS.Contracts` contains API routes and DTOs shared by the API and the WebAssembly client.
+- `src/RestaurantPOS.Web` is the original Blazor Server application. During migration, it still owns most domain, data, identity, and feature service code.
 - `src/RestaurantPOS.Web/Components/Pages` contains staff-facing screens grouped by feature.
 - `src/RestaurantPOS.Web/Features` contains small service classes for workflows such as orders, payments, inventory, and reports.
 - `src/RestaurantPOS.Web/Domain` contains simple entities and enums.
@@ -19,7 +22,9 @@ This repository contains a simple single-restaurant POS built with .NET 10, Blaz
 - Restore: `dotnet restore RestaurantPOS.sln`
 - Build: `dotnet build RestaurantPOS.sln --no-restore`
 - Test: `dotnet test RestaurantPOS.sln --no-build`
-- Run app: `dotnet run --project src/RestaurantPOS.Web`
+- Run backend API: `dotnet run --project src/RestaurantPOS.Api --launch-profile http`
+- Run WebAssembly client: `dotnet run --project src/RestaurantPOS.Client --launch-profile http`
+- Run original Blazor Server app: `dotnet run --project src/RestaurantPOS.Web`
 - Add migration: `dotnet ef migrations add <Name> --project src/RestaurantPOS.Web --startup-project src/RestaurantPOS.Web`
 
 ## Naming Rules
@@ -42,5 +47,5 @@ This repository contains a simple single-restaurant POS built with .NET 10, Blaz
 
 - Single restaurant only.
 - Manual payment recording only.
-- No separate REST API unless a separate client appears.
+- Prefer moving new UI work to `RestaurantPOS.Client` and exposing needed data through `RestaurantPOS.Api`.
 - No multi-branch, subscription, or offline mode in v1.

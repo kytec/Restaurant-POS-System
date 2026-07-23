@@ -2,28 +2,34 @@
 @attribute [Authorize(Roles = AppRoles.AdminOnly)]
 
 @inject StaffService StaffService
+@inject StaffUserService StaffUserService
 @inject ISnackbar Snackbar
 
-<PageTitle>Waiters</PageTitle>
+<PageTitle>Staff Users</PageTitle>
 
 <div class="page-header">
     <div>
-        <MudText Typo="Typo.h4">Waiters</MudText>
-        <MudText Typo="Typo.body2" Color="Color.Secondary">Staff directory and POS roles</MudText>
+        <MudText Typo="Typo.h4">Staff Users</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">Create staff logins and assign POS roles</MudText>
     </div>
 </div>
 
 <MudPaper Class="pa-4 mb-4" Elevation="1">
-    <MudText Typo="Typo.h6">Add Staff Member</MudText>
+    <MudText Typo="Typo.h6">Create Staff Login</MudText>
+    @if (!string.IsNullOrWhiteSpace(_errorMessage))
+    {
+        <MudAlert Class="mt-3" Severity="Severity.Error">@_errorMessage</MudAlert>
+    }
     <div class="dense-form mt-3">
-        <MudTextField Label="Full name" @bind-Value="_fullName" />
-        <MudSelect T="StaffRole" Label="Role" @bind-Value="_role">
+        <MudTextField Label="Full name" @bind-Value="_newStaff.FullName" />
+        <MudTextField Label="Email" InputType="InputType.Email" @bind-Value="_newStaff.Email" />
+        <MudSelect T="StaffRole" Label="Role" @bind-Value="_newStaff.Role">
             @foreach (StaffRole role in Enum.GetValues<StaffRole>())
             {
                 <MudSelectItem Value="@role">@role</MudSelectItem>
             }
         </MudSelect>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PersonAdd" OnClick="CreateStaffAsync">Add Staff</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PersonAdd" OnClick="CreateStaffAsync">Create User</MudButton>
     </div>
 </MudPaper>
 
@@ -42,8 +48,8 @@
 
 @code {
     private List<StaffMember> _staff = [];
-    private string _fullName = string.Empty;
-    private StaffRole _role = StaffRole.Waiter;
+    private StaffInput _newStaff = new();
+    private string? _errorMessage;
 
     protected override async Task OnInitializedAsync()
     {
@@ -52,9 +58,24 @@
 
     private async Task CreateStaffAsync()
     {
-        await StaffService.CreateStaffAsync(_fullName, _role);
-        _fullName = string.Empty;
-        Snackbar.Add("Staff member added.", Severity.Success);
+        _errorMessage = null;
+        var result = await StaffUserService.CreateStaffUserAsync(_newStaff.FullName, _newStaff.Email, _newStaff.Role);
+
+        if (!result.Succeeded)
+        {
+            _errorMessage = string.Join(" ", result.Errors.Select(error => error.Description));
+            return;
+        }
+
+        _newStaff = new StaffInput();
+        Snackbar.Add("Staff login created and invitation email queued.", Severity.Success);
         _staff = await StaffService.GetStaffAsync();
+    }
+
+    private sealed class StaffInput
+    {
+        public string FullName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public StaffRole Role { get; set; } = StaffRole.Waiter;
     }
 }

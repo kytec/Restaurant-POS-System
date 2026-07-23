@@ -1,4 +1,6 @@
 @inherits LayoutComponentBase
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager NavigationManager
 
 <MudThemeProvider Theme="@_theme" />
 <MudPopoverProvider />
@@ -58,5 +60,24 @@
     private void ToggleDrawer()
     {
         _drawerOpen = !_drawerOpen;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated != true ||
+            !user.HasClaim(claim => claim.Type == AppClaimTypes.RequiresCredentialSetup))
+        {
+            return;
+        }
+
+        var path = NavigationManager.ToBaseRelativePath(NavigationManager.Uri).Split('?', '#')[0];
+        if (!path.Equals("Account/CompleteSetup", StringComparison.OrdinalIgnoreCase) &&
+            !path.Equals("Account/Logout", StringComparison.OrdinalIgnoreCase))
+        {
+            NavigationManager.NavigateTo("Account/CompleteSetup");
+        }
     }
 }
