@@ -1,0 +1,122 @@
+@page "/Account/CompleteSetup"
+@attribute [Authorize]
+
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Identity
+@using RestaurantPOS.Web.Data
+
+@inject UserManager<ApplicationUser> UserManager
+@inject SignInManager<ApplicationUser> SignInManager
+@inject StaffCredentialSetupService CredentialSetupService
+@inject IdentityRedirectManager RedirectManager
+
+<PageTitle>Complete Account Setup</PageTitle>
+
+<h1>Complete account setup</h1>
+
+<div class="row">
+    <div class="col-lg-6">
+        <StatusMessage Message="@Message" />
+        <EditForm Model="Input" method="post" OnValidSubmit="CompleteSetupAsync" FormName="complete-setup">
+            <DataAnnotationsValidator />
+            <h2>Choose your username and password.</h2>
+            <hr />
+            <ValidationSummary class="text-danger" role="alert" />
+            <div class="form-floating mb-3">
+                <InputText @bind-Value="Input.UserName" id="Input.UserName" class="form-control" autocomplete="username" aria-required="true" placeholder="username" />
+                <label for="Input.UserName">Username</label>
+                <ValidationMessage For="() => Input.UserName" class="text-danger" />
+            </div>
+            <div class="form-floating mb-3">
+                <InputText type="password" @bind-Value="Input.TemporaryPassword" id="Input.TemporaryPassword" class="form-control" autocomplete="current-password" aria-required="true" placeholder="temporary password" />
+                <label for="Input.TemporaryPassword">Temporary password</label>
+                <ValidationMessage For="() => Input.TemporaryPassword" class="text-danger" />
+            </div>
+            <div class="form-floating mb-3">
+                <InputText type="password" @bind-Value="Input.NewPassword" id="Input.NewPassword" class="form-control" autocomplete="new-password" aria-required="true" placeholder="new password" />
+                <label for="Input.NewPassword">New password</label>
+                <ValidationMessage For="() => Input.NewPassword" class="text-danger" />
+            </div>
+            <div class="form-floating mb-3">
+                <InputText type="password" @bind-Value="Input.ConfirmPassword" id="Input.ConfirmPassword" class="form-control" autocomplete="new-password" aria-required="true" placeholder="confirm password" />
+                <label for="Input.ConfirmPassword">Confirm password</label>
+                <ValidationMessage For="() => Input.ConfirmPassword" class="text-danger" />
+            </div>
+            <button type="submit" class="w-100 btn btn-lg btn-primary">Save credentials</button>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    private IEnumerable<IdentityError>? identityErrors;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; } = default!;
+
+    private string? Message => identityErrors is null ? null : $"Error: {string.Join(", ", identityErrors.Select(error => error.Description))}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new();
+
+        var user = await UserManager.GetUserAsync(HttpContext.User);
+        if (user is null)
+        {
+            RedirectManager.RedirectToInvalidUser(UserManager, HttpContext);
+            return;
+        }
+
+        Input.UserName = await UserManager.GetUserNameAsync(user) ?? string.Empty;
+
+        var claims = await UserManager.GetClaimsAsync(user);
+        if (!claims.Any(claim => claim.Type == AppClaimTypes.RequiresCredentialSetup))
+        {
+            RedirectManager.RedirectTo("");
+        }
+    }
+
+    private async Task CompleteSetupAsync()
+    {
+        var result = await CredentialSetupService.CompleteSetupAsync(
+            HttpContext.User,
+            Input.UserName,
+            Input.TemporaryPassword,
+            Input.NewPassword);
+
+        if (!result.Succeeded)
+        {
+            identityErrors = result.Errors;
+            return;
+        }
+
+        await SignInManager.SignOutAsync();
+        RedirectManager.RedirectToWithStatus("Account/Login", "Credentials updated. Sign in with your new username or email.", HttpContext);
+    }
+
+    private sealed class InputModel
+    {
+        [Required]
+        [StringLength(80, MinimumLength = 3)]
+        [Display(Name = "Username")]
+        public string UserName { get; set; } = string.Empty;
+
+        [Required]
+        [DataType(DataType.Password)]
+        [Display(Name = "Temporary password")]
+        public string TemporaryPassword { get; set; } = string.Empty;
+
+        [Required]
+        [StringLength(100, ErrorMessage = "The {0} must be at least {2} and at max {1} characters long.", MinimumLength = 6)]
+        [DataType(DataType.Password)]
+        [Display(Name = "New password")]
+        public string NewPassword { get; set; } = string.Empty;
+
+        [DataType(DataType.Password)]
+        [Display(Name = "Confirm password")]
+        [Compare("NewPassword", ErrorMessage = "The password and confirmation password do not match.")]
+        public string ConfirmPassword { get; set; } = string.Empty;
+    }
+}

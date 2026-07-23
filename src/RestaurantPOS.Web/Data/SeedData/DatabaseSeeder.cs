@@ -17,9 +17,21 @@ public static class DatabaseSeeder
         var userManager = provider.GetRequiredService<UserManager<ApplicationUser>>();
 
         await context.Database.MigrateAsync();
-        await SeedRolesAsync(roleManager);
-        await SeedAdminAsync(userManager, configuration);
+        await SeedIdentityAsync(roleManager, userManager, configuration);
         await SeedPosDataAsync(context);
+    }
+
+    public static async Task SeedIdentityAsync(
+        RoleManager<IdentityRole> roleManager,
+        UserManager<ApplicationUser> userManager,
+        IConfiguration configuration)
+    {
+        await SeedRolesAsync(roleManager);
+
+        foreach (var account in GetSeedUserAccounts(configuration))
+        {
+            await SeedUserAsync(userManager, account);
+        }
     }
 
     private static async Task SeedRolesAsync(RoleManager<IdentityRole> roleManager)
@@ -28,38 +40,56 @@ public static class DatabaseSeeder
         {
             if (!await roleManager.RoleExistsAsync(role))
             {
-                await roleManager.CreateAsync(new IdentityRole(role));
+                var result = await roleManager.CreateAsync(new IdentityRole(role));
+                EnsureIdentityResult(result, $"Could not seed {role} role");
             }
         }
     }
 
-    private static async Task SeedAdminAsync(UserManager<ApplicationUser> userManager, IConfiguration configuration)
+    private static SeedUserAccount[] GetSeedUserAccounts(IConfiguration configuration)
     {
-        var email = configuration["SeedAdmin:Email"] ?? "admin@restaurant.local";
-        var password = configuration["SeedAdmin:Password"] ?? "ChangeMe123!";
-        var user = await userManager.FindByEmailAsync(email);
+        return
+        [
+            new(
+                configuration["SeedAdmin:Email"] ?? "admin@restaurant.local",
+                configuration["SeedAdmin:Password"] ?? "ChangeMe123!",
+                AppRoles.Admin)
+        ];
+    }
+
+    private static async Task SeedUserAsync(UserManager<ApplicationUser> userManager, SeedUserAccount account)
+    {
+        var user = await userManager.FindByEmailAsync(account.Email);
 
         if (user is null)
         {
             user = new ApplicationUser
             {
-                UserName = email,
-                Email = email,
+                UserName = account.Email,
+                Email = account.Email,
                 EmailConfirmed = true
             };
 
-            var result = await userManager.CreateAsync(user, password);
-            if (!result.Succeeded)
-            {
-                var errors = string.Join(", ", result.Errors.Select(error => error.Description));
-                throw new InvalidOperationException($"Could not seed admin user: {errors}");
-            }
+            var result = await userManager.CreateAsync(user, account.Password);
+            EnsureIdentityResult(result, $"Could not seed {account.Role} user {account.Email}");
         }
 
-        if (!await userManager.IsInRoleAsync(user, AppRoles.Admin))
+        if (!await userManager.IsInRoleAsync(user, account.Role))
         {
-            await userManager.AddToRoleAsync(user, AppRoles.Admin);
+            var result = await userManager.AddToRoleAsync(user, account.Role);
+            EnsureIdentityResult(result, $"Could not assign {account.Role} role to {account.Email}");
         }
+    }
+
+    private static void EnsureIdentityResult(IdentityResult result, string message)
+    {
+        if (result.Succeeded)
+        {
+            return;
+        }
+
+        var errors = string.Join(", ", result.Errors.Select(error => error.Description));
+        throw new InvalidOperationException($"{message}: {errors}");
     }
 
     private static async Task SeedPosDataAsync(AppDbContext context)
@@ -109,4 +139,6 @@ public static class DatabaseSeeder
 
         await context.SaveChangesAsync();
     }
+
+    private sealed record SeedUserAccount(string Email, string Password, string Role);
 }

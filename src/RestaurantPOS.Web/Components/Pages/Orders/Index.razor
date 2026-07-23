@@ -67,7 +67,14 @@
                     <MudText Typo="Typo.h6">@_selectedOrder.OrderNumber</MudText>
                     <MudText Typo="Typo.caption" Color="Color.Secondary">@(_selectedOrder.DiningTable?.Name ?? "Walk-in") - @_selectedOrder.Status</MudText>
                 </div>
-                <MudButton Disabled="@(_selectedOrder.Status != OrderStatus.Draft)" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Restaurant" OnClick="SendToKitchenAsync">Send</MudButton>
+                @if (_selectedOrder.Status == OrderStatus.Ready)
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.CheckCircle" OnClick="MarkServedAsync">Mark Served</MudButton>
+                }
+                else
+                {
+                    <MudButton Disabled="@(_selectedOrder.Status != OrderStatus.Draft)" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Restaurant" OnClick="SendToKitchenAsync">Send</MudButton>
+                }
             </div>
 
             <div class="dense-form mb-4">
@@ -177,6 +184,18 @@
 
         await OrderService.SendToKitchenAsync(_selectedOrder.Id);
         Snackbar.Add("Order sent to kitchen.", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task MarkServedAsync()
+    {
+        if (_selectedOrder is null)
+        {
+            return;
+        }
+
+        await OrderService.MarkServedAsync(_selectedOrder.Id);
+        Snackbar.Add("Order marked served.", Severity.Success);
         await LoadAsync();
     }
 }

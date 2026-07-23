@@ -1,16 +1,113 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using RestaurantPOS.Web.Data;
+using RestaurantPOS.Web.Data.SeedData;
 using RestaurantPOS.Web.Domain.Entities;
 using RestaurantPOS.Web.Domain.Enums;
 using RestaurantPOS.Web.Features.Inventory;
 using RestaurantPOS.Web.Features.Orders;
 using RestaurantPOS.Web.Features.Payments;
+using RestaurantPOS.Web.Features.Staff;
+using RestaurantPOS.Web.Security;
 using RestaurantPOS.Web.Services;
 
 namespace RestaurantPOS.Tests;
 
 public sealed class PosWorkflowTests
 {
+    [Fact]
+    public async Task Seeder_creates_admin_login_and_pos_roles()
+    {
+        using var provider = CreateIdentityProvider();
+        var roleManager = provider.GetRequiredService<RoleManager<IdentityRole>>();
+        var userManager = provider.GetRequiredService<UserManager<ApplicationUser>>();
+        var configuration = new ConfigurationBuilder().Build();
+
+        await DatabaseSeeder.SeedIdentityAsync(roleManager, userManager, configuration);
+
+        await AssertSeededUserAsync(userManager, "admin@restaurant.local", AppRoles.Admin);
+        foreach (var role in AppRoles.All)
+        {
+            Assert.True(await roleManager.RoleExistsAsync(role));
+        }
+
+        Assert.Null(await userManager.FindByEmailAsync("waiter@restaurant.local"));
+    }
+
+    [Fact]
+    public async Task Admin_can_create_staff_login_with_role_and_setup_requirement()
+    {
+        using var provider = CreateIdentityProvider();
+        var roleManager = provider.GetRequiredService<RoleManager<IdentityRole>>();
+        var userManager = provider.GetRequiredService<UserManager<ApplicationUser>>();
+        var context = provider.GetRequiredService<ApplicationDbContext>();
+        var invitationEmailSender = new CapturingInvitationEmailSender();
+        var configuration = new ConfigurationBuilder().Build();
+        await DatabaseSeeder.SeedIdentityAsync(roleManager, userManager, configuration);
+        var service = new StaffUserService(context, userManager, invitationEmailSender);
+
+        var result = await service.CreateStaffUserAsync("Will Waiter", "will@example.com", StaffRole.Waiter);
+
+        Assert.True(result.Succeeded);
+        var user = await userManager.FindByEmailAsync("will@example.com");
+        Assert.NotNull(user);
+        Assert.Equal("will@example.com", invitationEmailSender.Email);
+        Assert.True(await userManager.CheckPasswordAsync(user, invitationEmailSender.TemporaryPassword!));
+        Assert.True(await userManager.IsInRoleAsync(user, AppRoles.Waiter));
+        var claims = await userManager.GetClaimsAsync(user);
+        Assert.Contains(claims, claim => claim.Type == AppClaimTypes.RequiresCredentialSetup);
+        Assert.True(await context.StaffMembers.AnyAsync(staff => staff.FullName == "Will Waiter" && staff.Role == StaffRole.Waiter));
+    }
+
+    [Fact]
+    public async Task Staff_login_creation_rejects_invalid_email()
+    {
+        using var provider = CreateIdentityProvider();
+        var roleManager = provider.GetRequiredService<RoleManager<IdentityRole>>();
+        var userManager = provider.GetRequiredService<UserManager<ApplicationUser>>();
+        var context = provider.GetRequiredService<ApplicationDbContext>();
+        var invitationEmailSender = new CapturingInvitationEmailSender();
+        var configuration = new ConfigurationBuilder().Build();
+        await DatabaseSeeder.SeedIdentityAsync(roleManager, userManager, configuration);
+        var service = new StaffUserService(context, userManager, invitationEmailSender);
+
+        var result = await service.CreateStaffUserAsync("Will Waiter", "not-an-email", StaffRole.Waiter);
+
+        Assert.False(result.Succeeded);
+        Assert.Null(invitationEmailSender.Email);
+        Assert.False(await context.StaffMembers.AnyAsync(staff => staff.FullName == "Will Waiter"));
+    }
+
+    [Fact]
+    public async Task Staff_user_can_complete_first_login_credential_setup()
+    {
+        using var provider = CreateIdentityProvider();
+        var roleManager = provider.GetRequiredService<RoleManager<IdentityRole>>();
+        var userManager = provider.GetRequiredService<UserManager<ApplicationUser>>();
+        var context = provider.GetRequiredService<ApplicationDbContext>();
+        var invitationEmailSender = new CapturingInvitationEmailSender();
+        var configuration = new ConfigurationBuilder().Build();
+        await DatabaseSeeder.SeedIdentityAsync(roleManager, userManager, configuration);
+        var staffUserService = new StaffUserService(context, userManager, invitationEmailSender);
+        await staffUserService.CreateStaffUserAsync("Will Waiter", "will@example.com", StaffRole.Waiter);
+        var user = await userManager.FindByEmailAsync("will@example.com");
+        var principal = CreatePrincipal(user!);
+        var setupService = new StaffCredentialSetupService(userManager);
+
+        var result = await setupService.CompleteSetupAsync(principal, "will.waiter", invitationEmailSender.TemporaryPassword!, "ReadyToServe123!");
+
+        Assert.True(result.Succeeded);
+        var updatedUser = await userManager.FindByEmailAsync("will@example.com");
+        Assert.NotNull(updatedUser);
+        Assert.Equal("will.waiter", updatedUser.UserName);
+        Assert.True(await userManager.CheckPasswordAsync(updatedUser, "ReadyToServe123!"));
+        var claims = await userManager.GetClaimsAsync(updatedUser);
+        Assert.DoesNotContain(claims, claim => claim.Type == AppClaimTypes.RequiresCredentialSetup);
+    }
+
     [Fact]
     public void Order_total_sums_order_item_line_totals()
     {
@@ -68,6 +165,29 @@ public sealed class PosWorkflowTests
 
         var savedOrder = await context.Orders.FindAsync(order.Id);
         Assert.Equal(OrderStatus.Ready, savedOrder!.Status);
+    }
+
+    [Fact]
+    public async Task Ready_order_can_be_marked_served()
+    {
+        await using var context = CreateContext();
+        context.DiningTables.Add(new DiningTable { Id = 1, Name = "Table 1", Capacity = 4, Status = TableStatus.WaitingForFood });
+        var order = new Order
+        {
+            OrderNumber = "POS-READY",
+            DiningTableId = 1,
+            Status = OrderStatus.Ready
+        };
+        context.Orders.Add(order);
+        await context.SaveChangesAsync();
+        var service = new OrderService(context, new PosNotificationService());
+
+        await service.MarkServedAsync(order.Id);
+
+        var savedOrder = await context.Orders.FindAsync(order.Id);
+        var table = await context.DiningTables.FindAsync(1);
+        Assert.Equal(OrderStatus.Served, savedOrder!.Status);
+        Assert.Equal(TableStatus.ReadyToPay, table!.Status);
     }
 
     [Fact]
@@ -154,6 +274,55 @@ public sealed class PosWorkflowTests
             .Options;
 
         return new AppDbContext(options);
+    }
+
+    private static ServiceProvider CreateIdentityProvider()
+    {
+        var services = new ServiceCollection();
+        services.AddDataProtection();
+        services.AddLogging();
+        services.AddDbContext<ApplicationDbContext>(options => options.UseInMemoryDatabase(Guid.NewGuid().ToString()));
+        services.AddIdentityCore<ApplicationUser>(options =>
+            {
+                options.SignIn.RequireConfirmedAccount = false;
+                options.Stores.SchemaVersion = IdentitySchemaVersions.Version3;
+            })
+            .AddRoles<IdentityRole>()
+            .AddEntityFrameworkStores<ApplicationDbContext>()
+            .AddDefaultTokenProviders();
+
+        return services.BuildServiceProvider();
+    }
+
+    private static async Task AssertSeededUserAsync(UserManager<ApplicationUser> userManager, string email, string role)
+    {
+        var user = await userManager.FindByEmailAsync(email);
+
+        Assert.NotNull(user);
+        Assert.True(await userManager.CheckPasswordAsync(user, "ChangeMe123!"));
+        Assert.True(await userManager.IsInRoleAsync(user, role));
+    }
+
+    private static ClaimsPrincipal CreatePrincipal(ApplicationUser user)
+    {
+        var identity = new ClaimsIdentity(
+            [new Claim(ClaimTypes.NameIdentifier, user.Id)],
+            IdentityConstants.ApplicationScheme);
+
+        return new ClaimsPrincipal(identity);
+    }
+
+    private sealed class CapturingInvitationEmailSender : IStaffInvitationEmailSender
+    {
+        public string? Email { get; private set; }
+        public string? TemporaryPassword { get; private set; }
+
+        public Task SendInvitationAsync(ApplicationUser user, string temporaryPassword)
+        {
+            Email = user.Email;
+            TemporaryPassword = temporaryPassword;
+            return Task.CompletedTask;
+        }
     }
 
     private static async Task SeedOrderDataAsync(AppDbContext context)

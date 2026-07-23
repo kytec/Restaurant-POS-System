@@ -53,11 +53,15 @@ builder.Services.AddIdentityCore<ApplicationUser>(options =>
     .AddSignInManager()
     .AddDefaultTokenProviders();
 
+builder.Services.AddSingleton<Microsoft.AspNetCore.Identity.UI.Services.IEmailSender, Microsoft.AspNetCore.Identity.UI.Services.NoOpEmailSender>();
 builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSender>();
 builder.Services.AddSingleton<PosNotificationService>();
 builder.Services.AddScoped<MenuService>();
 builder.Services.AddScoped<TableService>();
 builder.Services.AddScoped<StaffService>();
+builder.Services.AddScoped<IStaffInvitationEmailSender, StaffInvitationEmailSender>();
+builder.Services.AddScoped<StaffUserService>();
+builder.Services.AddScoped<StaffCredentialSetupService>();
 builder.Services.AddScoped<OrderService>();
 builder.Services.AddScoped<KitchenService>();
 builder.Services.AddScoped<PaymentService>();
